@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Blender MCP Bridge",
     "author": "Peedee",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
     "blender": (3, 0, 0),
     "location": "View3D > Sidebar > MCP Bridge",
     "description": (
@@ -135,6 +135,48 @@ def _handle_execute_code(params: dict):
     return _json_safe(namespace.get("result"))
 
 
+def _handle_execute_batch(params: dict) -> dict:
+    """Execute multiple commands sequentially in a single main-thread pass.
+
+    params.commands: [{"command": str, "params": dict}, ...]
+    Items run in order; one item's failure is captured and does not abort
+    the batch. Nested batches are rejected to keep semantics simple.
+    This is the efficiency win for agentic loops: one socket round trip
+    instead of one per command.
+    """
+    commands = params.get("commands")
+    if not isinstance(commands, list) or not commands:
+        raise ValueError("params.commands must be a non-empty list")
+    if len(commands) > 100:
+        raise ValueError("batch limited to 100 commands per request")
+    results = []
+    for item in commands:
+        if not isinstance(item, dict):
+            results.append({"command": None, "ok": False, "result": None,
+                            "error": "batch item must be an object"})
+            continue
+        cmd = item.get("command")
+        sub_params = item.get("params") or {}
+        if cmd == "execute_batch":
+            results.append({"command": cmd, "ok": False, "result": None,
+                            "error": "nested batches are not allowed"})
+            continue
+        handler = _COMMANDS.get(cmd)
+        if handler is None:
+            results.append({"command": cmd, "ok": False, "result": None,
+                            "error": f"unknown command {cmd!r}; "
+                                     f"known: {sorted(_COMMANDS)}"})
+            continue
+        try:
+            results.append({"command": cmd, "ok": True,
+                            "result": _json_safe(handler(sub_params)),
+                            "error": None})
+        except Exception as exc:  # noqa: BLE001 - captured per item
+            results.append({"command": cmd, "ok": False, "result": None,
+                            "error": f"{type(exc).__name__}: {exc}"})
+    return {"results": results, "count": len(results)}
+
+
 def _object_summary(obj) -> dict:
     mats = []
     try:
@@ -261,6 +303,7 @@ def _handle_get_viewport_screenshot(params: dict) -> dict:
 _COMMANDS = {
     "ping": _handle_ping,
     "execute_code": _handle_execute_code,
+    "execute_batch": _handle_execute_batch,
     "get_scene_info": _handle_get_scene_info,
     "get_object_info": _handle_get_object_info,
     "get_viewport_screenshot": _handle_get_viewport_screenshot,

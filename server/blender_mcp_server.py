@@ -82,6 +82,34 @@ def get_viewport_screenshot(max_width: int = 1280):
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+def execute_batch(commands: list[dict]) -> dict:
+    """Execute multiple bridge commands in ONE round trip to Blender.
+
+    Each item is {"command": str, "params": dict} using the bridge commands
+    (ping, execute_code, get_scene_info, get_object_info,
+    get_viewport_screenshot). Items run sequentially on Blender's main
+    thread; one item's failure is captured per-item and does not abort the
+    batch. Use this instead of many separate calls when an agent needs to
+    do several things at once — it cuts the round trips to one.
+
+    Example:
+        [
+          {"command": "execute_code", "params": {"code": "result = 1 + 1"}},
+          {"command": "get_scene_info", "params": {}},
+        ]
+    """
+    if not isinstance(commands, list) or not commands:
+        raise ValueError("commands must be a non-empty list")
+    if len(commands) > 100:
+        raise ValueError("batch limited to 100 commands per request")
+    return send_command("execute_batch", {"commands": commands})
+
+
+# ---------------------------------------------------------------------------
+# Raw power tool
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
 def execute_blender_code(code: str) -> object:
     """Execute arbitrary Python code inside Blender (``bpy`` is available).
 
@@ -248,4 +276,27 @@ def assign_material(object_name: str, material_name: str) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Blender MCP Bridge server (MCP -> TCP 127.0.0.1:9876 -> Blender)"
+    )
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="serve over Streamable HTTP instead of stdio, so multiple "
+             "clients (and remote ones via a tunnel) can share one server",
+    )
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="bind address for --http (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8000,
+                        help="port for --http (default: 8000)")
+    args = parser.parse_args()
+
+    if args.http:
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+        print(f"[blender-mcp] serving Streamable HTTP on {args.host}:{args.port}/mcp")
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run()  # stdio: what Claude Desktop / Cursor / Muse CLI expect

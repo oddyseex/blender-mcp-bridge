@@ -67,11 +67,29 @@ Then ask your assistant to `ping_blender` — if it answers with your Blender ve
 | `get_object_info` | Transforms, materials, bounds, mesh stats for one object |
 | `get_viewport_screenshot` | Viewport capture as an image (visual feedback loop) |
 | `execute_blender_code` | Run arbitrary `bpy` Python; assign output to `result` |
+| `execute_batch` | Run multiple bridge commands in **one** round trip (ordered, per-item results) |
 | `create_primitive` | cube / spheres / cylinder / cone / plane / torus / monkey / … |
 | `transform_object` | Move / rotate / scale by name |
 | `delete_object` | Remove an object by name |
 | `create_material` | Principled BSDF material from hex color + metallic/roughness |
 | `assign_material` | Put a material on an object |
+
+## Transports: stdio (default) or HTTP
+
+By default the server speaks MCP over **stdio** — what Claude Desktop,
+Cursor, and Muse CLI expect (see config above).
+
+For setups where one server should be shared (multiple local clients without
+spawning a process each, or remote access via a tunnel), run it over
+**Streamable HTTP** instead:
+
+```bash
+python server/blender_mcp_server.py --http --port 8000
+# serves MCP at http://127.0.0.1:8000/mcp
+```
+
+Point any Streamable-HTTP-capable client at that URL. Keep it on localhost
+unless you know what you're doing — the bridge executes arbitrary Python.
 
 ## Protocol (v1)
 

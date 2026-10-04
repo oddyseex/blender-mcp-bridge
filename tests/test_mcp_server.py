@@ -30,6 +30,7 @@ EXPECTED_TOOLS = sorted([
     "get_object_info",
     "get_viewport_screenshot",
     "execute_blender_code",
+    "execute_batch",
     "create_primitive",
     "transform_object",
     "delete_object",
